@@ -18,8 +18,8 @@
 #include "Types.h"
 
 const Scalar EPSILON = 1e-14;
-typedef std::function<VectorX(VectorX const &)> Residual_t;
-typedef std::function<ColMajorSparseMatrix(VectorX const &)> Jacobian_t;
+using Residual_t = std::function<VectorX(const VectorX&)>;
+using Jacobian_t = std::function<ColMajorSparseMatrix(const VectorX&)>;
 
 namespace preAApp {
 
@@ -122,8 +122,9 @@ class AndersonAcceleration {
         m_linearSolverPreconditioning.compute(m_preconditioner);
       }
       VectorX residual = F(m_solution);
-      m_currentF = -m_linearSolverPreconditioning.solve(residual);
       m_currResidualNorm = residual.norm();
+
+      m_currentF = -m_linearSolverPreconditioning.solve(residual);
     } else {
       // no preconditioning version
       m_currentF = F(m_solution);
@@ -139,32 +140,15 @@ class AndersonAcceleration {
 
   void PicardIteration(const Residual_t &F,
                        const Jacobian_t &Jacobian) {
-    if (m_param.usePreconditioning) {
-      // preconditioning version
-      while (m_iter < m_param.max_iterations
-          && m_currResidualNorm > m_param.epsilon) {
-        if (!(m_iter % m_param.updatePreconditionerStep)) {
-          m_preconditioner = Jacobian(m_solution);
-          m_linearSolverPreconditioning.compute(m_preconditioner);
-        }
-        VectorX residual = F(m_solution);
-        m_currentF = -m_linearSolverPreconditioning.solve(residual);
-        m_currResidualNorm = residual.norm();
+    while (m_iter < m_param.max_iterations
+        && m_currResidualNorm > m_param.epsilon) {
+      updateG(F, Jacobian);
+      m_solution = m_currentG;
 
-        m_solution += m_currentF;
-        if (m_printInfo) { printIterationInfo(); }
-        m_iter++;
-      }
-    } else {
-      while (m_iter < m_param.max_iterations
-          && m_currResidualNorm > m_param.epsilon) {
-        m_currentF = F(m_solution);
-        m_currResidualNorm = m_currentF.norm();
+      if (m_printInfo) { printIterationInfo(); }
 
-        m_solution += m_currentF;
-        if (m_printInfo) { printIterationInfo(); }
-        m_iter++;
-      }
+      ++m_iter;
+      if (m_trackResidualNorm) { m_residualList.push_back(m_currResidualNorm);}
     }
   }
 
@@ -234,41 +218,39 @@ class AndersonAcceleration {
       m_prevdF.col(m_columnIndex) = -m_currentF;
       m_prevdG.col(m_columnIndex) = -m_currentG;
 
-      m_iter++;
-
+      ++m_iter;
       if (m_trackResidualNorm) { m_residualList.push_back(m_currResidualNorm); }
     }
   }
 
-//    Eigen::CompleteOrthogonalDecomposition<MatrixXX> m_linearSolver;
-  Eigen::SparseLU<ColMajorSparseMatrix> m_linearSolverPreconditioning;
-// 候选求解器: Eigen::PartialPivLU, Eigen::FullPivLU, Eigen::HouseholderQR,
-//      Eigen::ColPivHouseholderQR, Eigen::JacobiSVD
+  // TODO: small matrix inverse
+  // Solver for LS problem
   Eigen::FullPivLU<MatrixXX> m_linearSolver;
-  ColMajorSparseMatrix m_preconditioner;
+  // Parameters
+  const preAAParam<Scalar> m_param;
+  int m_dim = -1;
+  // Iteration
+  int m_iter = 0;
+  int m_columnIndex = 0;
+  // Residual
+  Scalar m_currResidualNorm;
+  // Solution
   VectorX m_solution;
   VectorX m_currentF;
   VectorX m_currentG;
+  // Anderson extrapolation
   MatrixXX m_prevdG;
   MatrixXX m_prevdF;
-
-  const preAAParam<Scalar> &m_param;
-
-  // Normal equations matrix for the computing alpha
   MatrixXX m_normalEquationMatrix;
-  // alpha value computed from normal equations
   VectorX m_alpha;
-  // The scaling factor for each column of prev_dF
   VectorX m_scaledF;
-  // The norm of current residual
-  Scalar m_currResidualNorm = std::numeric_limits<Scalar>::max();
-
-  int m_dim = -1;  // Dimension of variables
-  int m_iter = 0;    // Iteration count since initialization
-  int m_columnIndex = 0; // Index for history matrix column to store the next
-  // value
-
+  // Preconditioning
+  ColMajorSparseMatrix m_preconditioner;
+  Eigen::SparseLU<ColMajorSparseMatrix> m_linearSolverPreconditioning;
+  // Print information
   bool m_printInfo = true;
+
+  // track residual norm history
   bool m_trackResidualNorm = false;
   std::vector<Scalar> m_residualList;
 };
