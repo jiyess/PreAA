@@ -1,7 +1,3 @@
-//
-// Created by 纪野 on 2023/5/22.
-//
-
 /** @file AndersonAcceleration_example.cpp
 
     @brief Tutorial on how to use Anderson acceleration and its (preconditioned) variants
@@ -12,23 +8,17 @@
     License, v. 2.0. If a copy of the MPL was not distributed with this
     file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-    Author(s): Ye Ji
+    Author(s): Ye Ji (jiyess@outlook.com)
 */
 
 //! [Include namespace]
-#include <iostream>
-#include <chrono>
 #include "preAA.h"
 
 using namespace preAApp;
 //! [Include namespace]
 
-typedef std::function<VectorX(VectorX const &)> Residual_t;
-typedef std::function<ColMajorSparseMatrix(VectorX const &)> Jacobian_t;
-
 Residual_t residual = [](VectorX const &u) {
-
-  int n = u.size();
+  auto n = u.size();
 
   VectorX F(n);
 //    G[0] = -0.5* pow(u[0]-u[1], 3) + 1.0;
@@ -57,7 +47,7 @@ Residual_t residual = [](VectorX const &u) {
 };
 
 Jacobian_t jacobian = [](VectorX const &u) {
-  int n = u.size();
+  auto n = u.size();
 
   ColMajorSparseMatrix jac(n,n);
 //    VectorX F(n);
@@ -88,81 +78,18 @@ Jacobian_t jacobian = [](VectorX const &u) {
 
 int main(int argc, char *argv[])
 {
-//  G[1]=-0.5*(u[1]-u[2])^3+1.0
-//  G[2]=-0.5*(u[2]-u[1])^3
-
   int m = 0;
+
   AndersonAcceleration<double> AASolver(m, 1000, 1e-10);
   AASolver.usePreconditioningON();
 //  AASolver.usePreconditioningOFF();
 //  AASolver.setUpdatePreconditionerStep(2);
 //  AASolver.printIterInfoOFF();
 
-  int n = 2;
-  VectorX initialGuess(n);
-  initialGuess.setOnes();
+  VectorX initialGuess = VectorX::Ones(2);
 
-  auto begin = std::chrono::high_resolution_clock::now();
-  VectorX sol = AASolver.compute(initialGuess, residual, jacobian);
+  measureTime([&]() {
+    VectorX sol = AASolver.compute(initialGuess, residual, jacobian);
+  });
 
-  // Stop measuring time and calculate the elapsed time
-  auto end = std::chrono::high_resolution_clock::now();
-  auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin);
-
-  std::cout << "\n Time passed by " << elapsed.count() * 1e-9 << " sec. \n";
 }
-
-//#include <iostream>
-//#include <cmath>
-//
-//// 定义非线性方程组的函数
-//double f1(double x, double y) {
-//  return sin(x) + y - 1.0;
-//}
-//
-//double f2(double x, double y) {
-//  return x + cos(y) - 2.0;
-//}
-//
-//// Picard迭代求解非线性方程组
-//void picardIteration(double& x, double& y, int maxIterations, double tolerance) {
-//  double x0 = x;
-//  double y0 = y;
-//
-//  for (int i = 0; i < maxIterations; ++i) {
-//    double newX = f1(x0, y0);
-//    double newY = f2(x0, y0);
-//
-//    if (std::abs(newX - x0) < tolerance && std::abs(newY - y0) < tolerance) {
-//      x = newX;
-//      y = newY;
-//      return;
-//    }
-//
-//    std::cout << "iter = " << i << ", res = " << newX*newX + newY*newY << "\n";
-//
-//    x0 = newX;
-//    y0 = newY;
-//  }
-//
-//  // 如果达到最大迭代次数仍未收敛，则输出错误信息
-//  std::cout << "Picard迭代未收敛" << std::endl;
-//}
-//
-//int main() {
-//  // 设置初始猜测值
-//  double x = 0.0;
-//  double y = 0.0;
-//
-//  // 设置最大迭代次数和容差
-//  int maxIterations = 100;
-//  double tolerance = 1e-6;
-//
-//  // 使用Picard迭代求解非线性方程组
-//  picardIteration(x, y, maxIterations, tolerance);
-//
-//  // 输出结果
-//  std::cout << "解的近似值为：x = " << x << ", y = " << y << std::endl;
-//
-//  return 0;
-//}
