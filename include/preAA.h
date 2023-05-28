@@ -2,13 +2,11 @@
 
     @brief Anderson acceleration solver and its (preconditioned) variants
 
-    This file is part of the G+Smo library.
+    This Source Code Form is subject to the terms of the GNU Affero General
+    Public License v3.0. If a copy of the MPL was not distributed with this
+    file, You can obtain one at https://www.gnu.org/licenses/agpl-3.0.en.html.
 
-    This Source Code Form is subject to the terms of the Mozilla Public
-    License, v. 2.0. If a copy of the MPL was not distributed with this
-    file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
-    Author(s): Ye Ji (jiyess@outlook.com)
+    Author(s): Ye Ji <jiyess@outlook.com>
 */
 
 #ifndef PREAAPP_INCLUDE_PREAA_H_
@@ -16,22 +14,8 @@
 
 #pragma once
 
-//#include <Eigen/Core>
-//#include <Eigen/Sparse>
+#include "preAAParam.h"
 #include "Types.h"
-
-/**  
- *  Runtime assertions which display a message  
- *
- */
-#ifndef NDEBUG
-#   define DEBUG_ASSERT(cond, message) do if(!(cond)) {std::cerr          \
-       <<"Assert `"<<#cond<<"` "<<message<<"\n"<<__FILE__<<", line "\
-       <<__LINE__<<" ("<<__FUNCTION__<<")"<<std::endl;                    \
-       throw std::logic_error("DEBUG_ASSERT"); } while(false)
-#else
-#   define DEBUG_ASSERT(condition, message)
-#endif
 
 const Scalar EPSILON = 1e-14;
 typedef std::function<VectorX(VectorX const &)> Residual_t;
@@ -39,46 +23,28 @@ typedef std::function<ColMajorSparseMatrix(VectorX const &)> Jacobian_t;
 
 namespace preAApp {
 
+template<typename Func>
+void measureTime(Func func) {
+  auto beforeTime = std::chrono::high_resolution_clock::now();
+
+  func();  // Call the function
+
+  auto afterTime = std::chrono::high_resolution_clock::now();
+  auto duration = std::chrono::duration<double>(afterTime - beforeTime).count();
+  printf("\nTime passed by %.8f sec. \n", duration);
+}
+
 /// @brief Anderson acceleration solver and its (preconditioned) variants
 ///
 /// \ingroup Solver
-template<typename T>
+template<typename Scalar = double>
 class AndersonAcceleration {
-
  public:
-  AndersonAcceleration() = default;
 
-  explicit AndersonAcceleration(int m)
-      : m_m(m) {
-    DEBUG_ASSERT(m > 0, "m should be greater than 0");
+  explicit AndersonAcceleration(const preAAParam<Scalar> &param) :
+      m_param(param) {
+    m_param.check_param();
   }
-
-  AndersonAcceleration(int m,
-                       int maxIter,
-                       T tolerance)
-      : m_m(m),
-        m_maxIter(maxIter),
-        m_tolerance(tolerance) {
-    DEBUG_ASSERT(m >= 0, "m should be greater than 0");
-  }
-
-  AndersonAcceleration(int m,
-                       int maxIter,
-                       T tolerance,
-                       int updatePreconditionerStep)
-      : m_m(m),
-        m_maxIter(maxIter),
-        m_tolerance(tolerance),
-        m_updatePreconditionerStep(updatePreconditionerStep) {
-    DEBUG_ASSERT(m >= 0, "m should be greater than 0");
-  }
-
-  void setUpdatePreconditionerStep(const int &updatePreconditionerStep) {
-    m_updatePreconditionerStep = updatePreconditionerStep;
-  };
-
-  void usePreconditioningON() { m_usePreconditioning = true; }
-  void usePreconditioningOFF() { m_usePreconditioning = false; }
 
   // perform Anderson acceleration iteration
   const VectorX &compute(const VectorX &u0, const Residual_t &F,
@@ -91,7 +57,7 @@ class AndersonAcceleration {
     // Iteration 0
     updateG(F, Jacobian);
 
-    if (m_currResidual < m_tolerance) {
+    if (m_currResidualNorm < m_param.epsilon) {
       printf("You are lucky, the initial guess is exactly the solution.\n\n\n");
       return m_solution;
     } else {
@@ -105,7 +71,8 @@ class AndersonAcceleration {
 
     // Start iteration
     m_iter = 1;
-    if (m_m == 0) {
+    // TODO: consider the code structure carefully!
+    if (m_param.m == 0) {
       // Picard iteration
       PicardIteration(F, Jacobian);
     } else {
@@ -119,82 +86,80 @@ class AndersonAcceleration {
   void printIterInfoOFF() { m_printInfo = false; }
 
  private:
-  // m_m: number of previous iterations used
-  // m_d: dimension of variables
-  // u0: initial guess
-  void init() {
+  inline void init() {
     m_dim = m_solution.size();
     m_iter = 0;
     m_columnIndex = 0;
 
     m_solution.resize(m_dim);
     m_currentF.resize(m_dim);
-    m_prevdG.resize(m_dim, m_m);
-    m_prevdF.resize(m_dim, m_m);
+    m_prevdG.resize(m_dim, m_param.m);
+    m_prevdF.resize(m_dim, m_param.m);
 
-    // TODO: if use preconditioner
-    if (m_usePreconditioning) {m_preconditioner.resize(m_dim, m_dim);}
-    if (m_updatePreconditionerStep<=0) {m_updatePreconditionerStep=10;}
+    m_normalEquationMatrix.resize(m_param.m, m_param.m);
+    m_alpha.resize(m_param.m);
+    m_scaledF.resize(m_param.m);
 
-    m_normalEquationMatrix.resize(m_m, m_m);
-    m_alpha.resize(m_m);
-    m_scaledF.resize(m_m);
+    if (m_param.usePreconditioning) { m_preconditioner.resize(m_dim, m_dim); }
   }
 
   void printSolverInfo() {
-    printf("\n SOLVER: parameter settings are as follows... \n");
-    printf("depth                       =     %d\n", m_m);
-    printf("use preconditioner          =     %d\n", m_usePreconditioning);
+    printf("\nAnderson Acceleration SOLVER: parameter settings... \n");
+    printf("depth                       =     %d\n", m_param.m);
+    printf("use preconditioner          =     %d\n",
+           m_param.usePreconditioning);
     printf("update preconditioner step  =     %d\n\n",
-           m_updatePreconditionerStep);
+           m_param.updatePreconditionerStep);
   }
 
   /// update fixed point function
   void updateG(const Residual_t &F,
                const Jacobian_t &Jacobian) {
-    if (m_usePreconditioning) {
+    if (m_param.usePreconditioning) {
       // preconditioning version
-      if (!(m_iter % m_updatePreconditionerStep)) {
+      if (!(m_iter % m_param.updatePreconditionerStep)) {
         m_preconditioner = Jacobian(m_solution);
         m_linearSolverPreconditioning.compute(m_preconditioner);
       }
       VectorX residual = F(m_solution);
       m_currentF = -m_linearSolverPreconditioning.solve(residual);
-      m_currResidual = residual.norm();
+      m_currResidualNorm = residual.norm();
     } else {
       // no preconditioning version
       m_currentF = F(m_solution);
-      m_currResidual = m_currentF.norm();
+      m_currResidualNorm = m_currentF.norm();
     }
 
     m_currentG = m_currentF + m_solution;
   }
 
   inline void printIterationInfo() {
-    printf(" %d         %.4e\n", m_iter, m_currResidual);
+    printf(" %d         %.4e\n", m_iter, m_currResidualNorm);
   }
 
   void PicardIteration(const Residual_t &F,
                        const Jacobian_t &Jacobian) {
-    if (m_usePreconditioning) {
+    if (m_param.usePreconditioning) {
       // preconditioning version
-      while (m_iter < m_maxIter && m_currResidual > m_tolerance) {
-        if (!(m_iter % m_updatePreconditionerStep)) {
+      while (m_iter < m_param.max_iterations
+          && m_currResidualNorm > m_param.epsilon) {
+        if (!(m_iter % m_param.updatePreconditionerStep)) {
           m_preconditioner = Jacobian(m_solution);
           m_linearSolverPreconditioning.compute(m_preconditioner);
         }
         VectorX residual = F(m_solution);
         m_currentF = -m_linearSolverPreconditioning.solve(residual);
-        m_currResidual = residual.norm();
+        m_currResidualNorm = residual.norm();
 
         m_solution += m_currentF;
         if (m_printInfo) { printIterationInfo(); }
         m_iter++;
       }
     } else {
-      while (m_iter < m_maxIter && m_currResidual > m_tolerance) {
+      while (m_iter < m_param.max_iterations
+          && m_currResidualNorm > m_param.epsilon) {
         m_currentF = F(m_solution);
-        m_currResidual = m_currentF.norm();
+        m_currResidualNorm = m_currentF.norm();
 
         m_solution += m_currentF;
         if (m_printInfo) { printIterationInfo(); }
@@ -208,7 +173,8 @@ class AndersonAcceleration {
     m_prevdF.col(0) = -m_currentF;
     m_prevdG.col(0) = -m_currentG;
 
-    while (m_iter < m_maxIter && m_currResidual > m_tolerance) {
+    while (m_iter < m_param.max_iterations
+        && m_currResidualNorm > m_param.epsilon) {
 
       updateG(F, Jacobian);
 
@@ -217,17 +183,17 @@ class AndersonAcceleration {
       m_prevdF.col(m_columnIndex) += m_currentF;
       m_prevdG.col(m_columnIndex) += m_currentG;
 
-      T scale = std::max(EPSILON, m_prevdF.col(m_columnIndex).norm());
+      Scalar scale = std::max(EPSILON, m_prevdF.col(m_columnIndex).norm());
       m_scaledF(m_columnIndex) = scale;
       m_prevdF.col(m_columnIndex) /= scale;
 
-      int m_k = std::min(m_m, m_iter);
+      int m_k = std::min(m_param.m, m_iter);
 
       if (m_k == 1) {
         m_alpha(0) = 0;
-        T dF_squaredNorm = m_prevdF.col(m_columnIndex).squaredNorm();
+        Scalar dF_squaredNorm = m_prevdF.col(m_columnIndex).squaredNorm();
         m_normalEquationMatrix(0, 0) = dF_squaredNorm;
-        T dF_norm = std::sqrt(dF_squaredNorm);
+        Scalar dF_norm = std::sqrt(dF_squaredNorm);
 
         // For better numerical stability
         if (dF_norm > EPSILON) {
@@ -264,14 +230,13 @@ class AndersonAcceleration {
 //                (1-m_beta) *
 //            );
 
-      m_columnIndex = (m_columnIndex + 1) % m_m;
+      m_columnIndex = (m_columnIndex + 1) % m_param.m;
       m_prevdF.col(m_columnIndex) = -m_currentF;
       m_prevdG.col(m_columnIndex) = -m_currentG;
 
       m_iter++;
 
-      // TODO: if record history list
-      m_residualList.push_back(m_currResidual);
+      if (m_trackResidualNorm) { m_residualList.push_back(m_currResidualNorm); }
     }
   }
 
@@ -287,32 +252,25 @@ class AndersonAcceleration {
   MatrixXX m_prevdG;
   MatrixXX m_prevdF;
 
+  const preAAParam<Scalar> &m_param;
+
   // Normal equations matrix for the computing alpha
   MatrixXX m_normalEquationMatrix;
   // alpha value computed from normal equations
   VectorX m_alpha;
   // The scaling factor for each column of prev_dF
   VectorX m_scaledF;
+  // The norm of current residual
+  Scalar m_currResidualNorm = std::numeric_limits<Scalar>::max();
 
-  T m_currResidual = std::numeric_limits<T>::max();
-  T m_beta = 1.0;
-  int m_dim;  // Dimension of variables
-  int m_iter;    // Iteration count since initialization
-  int m_columnIndex; // Index for history matrix column to store the next value
+  int m_dim = -1;  // Dimension of variables
+  int m_iter = 0;    // Iteration count since initialization
+  int m_columnIndex = 0; // Index for history matrix column to store the next
+  // value
 
-  bool m_usePreconditioning = false;
   bool m_printInfo = true;
-
-  std::vector<T> m_residualList;
-
-  // TODO: use gsOptionsList?
-  // Number of previous iterates used for Andreson Acceleration
-  int m_m = 5; // depth (windows size), typically small m <= 10
-  int m_maxIter = 1e3; // maximum iteration
-  T m_tolerance = 1e-5; // tolerance for convergence test
-
-  // update the preconditioner every updatePreconditionerStep step
-  int m_updatePreconditionerStep = -1;
+  bool m_trackResidualNorm = false;
+  std::vector<Scalar> m_residualList;
 };
 }
 

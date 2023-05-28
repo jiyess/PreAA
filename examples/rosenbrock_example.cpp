@@ -1,14 +1,12 @@
-/** @file AndersonAcceleration_example.cpp
+/** @file rosenbrock_example.cpp
 
-    @brief Tutorial on how to use Anderson acceleration and its (preconditioned) variants
+    @brief Tutorial on how to use preAApp by solving ``Rosenbrock`` problem
 
-    This file is part of the G+Smo library.
+    This Source Code Form is subject to the terms of the GNU Affero General
+    Public License v3.0. If a copy of the MPL was not distributed with this
+    file, You can obtain one at https://www.gnu.org/licenses/agpl-3.0.en.html.
 
-    This Source Code Form is subject to the terms of the Mozilla Public
-    License, v. 2.0. If a copy of the MPL was not distributed with this
-    file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
-    Author(s): Ye Ji (jiyess@outlook.com)
+    Author(s): Ye Ji <jiyess@outlook.com>
 */
 
 //! [Include namespace]
@@ -78,15 +76,21 @@ Jacobian_t jacobian = [](VectorX const &u) {
 
 int main(int argc, char *argv[])
 {
-  int m = 0;
+  int m = 0, n = 2;
 
-  AndersonAcceleration<double> AASolver(m, 1000, 1e-10);
-  AASolver.usePreconditioningON();
+  preAAParam<> param;
+  param.m = m;
+  param.usePreconditioning = true;
+//  param.updatePreconditionerStep = 1;
+  param.epsilon = 1e-10;
+
+  AndersonAcceleration<> AASolver(param);
+//  AASolver.usePreconditioningON();
 //  AASolver.usePreconditioningOFF();
 //  AASolver.setUpdatePreconditionerStep(2);
 //  AASolver.printIterInfoOFF();
 
-  VectorX initialGuess = VectorX::Ones(2);
+  VectorX initialGuess = VectorX::Ones(n);
 
   measureTime([&]() {
     VectorX sol = AASolver.compute(initialGuess, residual, jacobian);
