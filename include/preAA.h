@@ -121,6 +121,47 @@ class AndersonAcceleration {
     }
   }
 
+  inline void performPicardIteration(const Residual_t &F,
+                                     const Jacobian_t &Jacobian) {
+    while (m_iter < m_param.max_iterations
+        && m_currResidualNorm > m_param.epsilon) {
+      updateG(F, Jacobian);
+
+      // update the solution
+      m_solution = m_currentG;
+
+      printIterationInfo();
+
+      ++m_iter;
+      trackIterationInfo();
+    }
+  }
+
+  inline void performAAIteration(const Residual_t &F,
+                                 const Jacobian_t &Jacobian) {
+    m_prevdF.col(0) = -m_currentF;
+    m_prevdG.col(0) = -m_currentG;
+
+    while (m_iter < m_param.max_iterations &&
+        m_currResidualNorm > m_param.epsilon) {
+      updateG(F, Jacobian);
+
+      printIterationInfo();
+
+      updatePrevdFAndPrevdG();
+
+      // update alpha and solution (compute normal equation)
+      updateAlpha();
+      updateSolution();
+
+      // update the column indices
+      updateColumnIndices();
+
+      ++m_iter;
+      trackIterationInfo();
+    }
+  }
+
   /// update fixed point function
   inline void updateG(const Residual_t &F, const Jacobian_t &Jacobian) {
     if (m_param.usePreconditioning) {
@@ -156,64 +197,11 @@ class AndersonAcceleration {
     }
   }
 
-  inline void performPicardIteration(const Residual_t &F,
-                                     const Jacobian_t &Jacobian) {
-    while (m_iter < m_param.max_iterations
-        && m_currResidualNorm > m_param.epsilon) {
-      updateG(F, Jacobian);
-
-      // update the solution
-      m_solution = m_currentG;
-
-      printIterationInfo();
-
-      ++m_iter;
-      trackIterationInfo();
-    }
-  }
-
-  inline void trackIterationInfo() {
-    if (m_trackResidualNorm) { m_residualList.push_back(m_currResidualNorm); }
-  }
-
-  inline void performAAIteration(const Residual_t &F,
-                                 const Jacobian_t &Jacobian) {
-    m_prevdF.col(0) = -m_currentF;
-    m_prevdG.col(0) = -m_currentG;
-
-    while (m_iter < m_param.max_iterations &&
-        m_currResidualNorm > m_param.epsilon) {
-      updateG(F, Jacobian);
-
-      printIterationInfo();
-
-      updatePrevdFAndPrevdG();
-
-      // scale previous dF for better numerical stability
-      scalePrevdF();
-
-      // compute m_mk
-      m_mk = std::min(m_param.m, m_iter);
-
-      // update alpha and solution (compute normal equation)
-      updateAlpha();
-
-      updateSolution();
-
-      // update the column indices
-      updateColumnIndices();
-
-      ++m_iter;
-      trackIterationInfo();
-    }
-  }
-
   inline void updatePrevdFAndPrevdG() {
     m_prevdF.col(m_columnIndex) += m_currentF;
     m_prevdG.col(m_columnIndex) += m_currentG;
-  }
 
-  inline void scalePrevdF() {
+    // scale previous dF for better numerical stability
     Scalar scale = std::max(EPSILON, m_prevdF.col(m_columnIndex).norm());
     m_scaledF(m_columnIndex) = scale;
     m_prevdF.col(m_columnIndex) /= scale;
@@ -221,6 +209,9 @@ class AndersonAcceleration {
 
   /// update the coefficients \f$ alpha_i \f$ by solving a Least-Square problem
   inline void updateAlpha() {
+    // compute m_mk
+    m_mk = std::min(m_param.m, m_iter);
+
     if (m_mk == 1) {
       m_alpha(0) = 0;
       Scalar dF_squaredNorm = m_prevdF.col(m_columnIndex).squaredNorm();
@@ -254,17 +245,23 @@ class AndersonAcceleration {
   /// update the solution
   inline void updateSolution() {
     // Update the current solution (x) using the rescaled alpha
+
     m_solution = m_currentG - m_prevdG.block(0, 0, m_dim, m_mk) *
         ((m_alpha.head(m_mk).array()
             / m_scaledF.head(m_mk).array()).matrix());
 
     // TODO: add mixing parameter \beta
-//        m_solution = (1-m_beta) * m_solution + m_beta * m_currentG - (
-//            m_prevdG.block(0, 0, m_dim, m_mk) * ( m_beta *
-//                (m_alpha.head(m_mk).array()/m_scaledF.head(m_mk).array())
-//                .matrix()) -
-//                (1-m_beta) *
-//            );
+//    if (m_useMixingBeta){
+//      m_solution = ((1-m_param.beta) * (m_solution -
+//          m_prevSolution.block(0, 0, m_dim, m_mk)) + m_param.beta *
+//              (m_currentG - m_prevdG.block(0, 0, m_dim, m_mk)) *  ((m_alpha
+//              .head(m_mk).array() / m_scaledF.head(m_mk).array()).matrix()));
+//    }
+//    else {
+//      m_solution = m_currentG - m_prevdG.block(0, 0, m_dim, m_mk) *
+//          ((m_alpha.head(m_mk).array()
+//              / m_scaledF.head(m_mk).array()).matrix());
+//    }
   }
 
   void updateColumnIndices() {
@@ -273,8 +270,11 @@ class AndersonAcceleration {
     m_prevdG.col(m_columnIndex) = -m_currentG;
   }
 
-  // TODO: small matrix inverse
-  // Solver for LS problem
+  inline void trackIterationInfo() {
+    if (m_trackResidualNorm) { m_residualList.push_back(m_currResidualNorm); }
+  }
+
+  // Linear solver for the Least-Square problem
   Eigen::FullPivLU<MatrixXX> m_linearSolver;
   // Parameters
   const preAAParam<Scalar> m_param;
@@ -305,6 +305,7 @@ class AndersonAcceleration {
   bool m_trackResidualNorm = false;
   std::vector<Scalar> m_residualList;
 };
+
 }
 
 #endif //PREAAPP_INCLUDE_PREAA_H_
