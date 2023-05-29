@@ -62,7 +62,7 @@ class preAAParam {
   /// It plays exactly the same role as it does for Picard iteration.
   /// One could vary \ref beta as the iteration.
   ///
-  Scalar beta;
+//  Scalar beta;
   ///
   /// Use preconditioning or not?
   ///
@@ -80,7 +80,7 @@ class preAAParam {
     epsilon_rel = Scalar(1e-5);
     max_iterations = 100;
     updatePreconditionerStep = 10;
-    beta = Scalar(1.0);
+//    beta = Scalar(1.0);
     usePreconditioning = false;
     // clang-format on
   }
@@ -99,6 +99,8 @@ class preAAParam {
       throw std::invalid_argument("'epsilon_rel' must be non-negative");
     if (max_iterations < 0)
       throw std::invalid_argument("'max_iterations' must be non-negative");
+//    if (beta < 0 || beta > 1.0)
+//      throw std::invalid_argument("'beta' must be between 0 and 1");
   }
 };
 
