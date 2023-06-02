@@ -16,14 +16,26 @@ find_package(Eigen3 REQUIRED)
 # Print Eigen3 version information
 message("-- Eigen3 version: ${EIGEN3_VERSION_STRING}")
 
-# Add executable
-add_executable(rosenbrock_example ${CMAKE_CURRENT_SOURCE_DIR}/examples/rosenbrock_example.cpp)
-add_executable(simple_example ${CMAKE_CURRENT_SOURCE_DIR}/examples/simple_example.cpp)
+# Retrieve all files in the examples folder
+file(GLOB EXAMPLE_FILES ${CMAKE_CURRENT_SOURCE_DIR}/examples/*.cpp)
 
-# Set include directories
-target_include_directories(rosenbrock_example PRIVATE ${INCLUDE_DIRS})
-target_include_directories(simple_example PRIVATE ${INCLUDE_DIRS})
+# Create an empty list of example names
+set(EXAMPLE_NAMES "")
 
-# Link Eigen3 library
-target_link_libraries(rosenbrock_example PRIVATE Eigen3::Eigen)
-target_link_libraries(simple_example PRIVATE Eigen3::Eigen)
+# Iterate over each example file and add its name to the list
+foreach(EXAMPLE_FILE IN LISTS EXAMPLE_FILES)
+    get_filename_component(EXAMPLE_NAME ${EXAMPLE_FILE} NAME_WE)
+    list(APPEND EXAMPLE_NAMES ${EXAMPLE_NAME})
+endforeach()
+
+# Define a CMake function to add an example
+function(add_example EXAMPLE_NAME)
+    add_executable(${EXAMPLE_NAME} ${CMAKE_CURRENT_SOURCE_DIR}/examples/${EXAMPLE_NAME}.cpp)
+    target_include_directories(${EXAMPLE_NAME} PRIVATE ${INCLUDE_DIRS})
+    target_link_libraries(${EXAMPLE_NAME} PRIVATE Eigen3::Eigen)
+endfunction()
+
+# Iterate over example names and call the add_example function
+foreach(EXAMPLE_NAME IN LISTS EXAMPLE_NAMES)
+    add_example(${EXAMPLE_NAME})
+endforeach()
