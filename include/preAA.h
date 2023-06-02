@@ -50,7 +50,7 @@ class AndersonAcceleration {
   const VectorX &compute(const VectorX &u0, const Residual_t &F,
                          const Jacobian_t &Jacobian) {
     // print the current solver information
-    printSolverInfo();
+    if (m_printInfo) { printSolverInfo();}
 
     // initialize the solver and preallocate memory
     initialize(u0);
@@ -77,6 +77,30 @@ class AndersonAcceleration {
 
     return m_solution;
   }
+
+  // TODO: add Jacobian check function
+//  Jacobian_t jacobianNumerical = [](VectorX const &u) {
+//    auto n = u.size();
+//
+//    ColMajorSparseMatrix hessian(n, n);
+//
+//    Scalar eps = 1e-8;
+//    VectorX currentResidual = residual(u);
+//    VectorX forwardResidual, diffVec;
+//    VectorX uu = u;
+//
+//    for (auto i=0; i<n; ++i) {
+//      uu(i) += eps;
+//      forwardResidual = residual(uu);
+//      diffVec = (forwardResidual - currentResidual) / eps;
+//      for (auto j=0; j<n; ++j) {
+//        hessian.coeffRef(i, j) = diffVec(j);
+//      }
+//      uu(i) -= eps;
+//    }
+//
+//    return hessian;
+//  };
 
   inline void enableIterationInfoPrinting() { m_printInfo = true; }
   inline void disableIterationInfoPrinting() { m_printInfo = false; }
