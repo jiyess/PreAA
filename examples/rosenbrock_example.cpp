@@ -9,6 +9,7 @@
     Author(s): Ye Ji <jiyess@outlook.com>
 */
 
+#include <iostream>
 //! [Include namespace]
 #include "preAA.h"
 
@@ -19,78 +20,68 @@ Residual_t residual = [](VectorX const &u) {
   auto n = u.size();
 
   VectorX F(n);
-//    G[0] = -0.5* pow(u[0]-u[1], 3) + 1.0;
-//    G[1] = -0.5* pow(u[1]-u[0], 3);
 
-  F(0) = cos(0.5 * (u(0)+u(1)));
-  F(1) = F(0) + 1e-8 * sin(u(1)*u(1));
-
-//    F[0] = pow(u(0),2);
-//    F[1] = pow(u(1),2);
-
-//    real_t b = 1;
-//    F(0) = 2*(u(0)-1) - 4 * b * (u(1) - pow(u(0),2))*u(0);
-//    F(1) = 2 * b * (u(1)-pow(u(0), 2));
-
-//    for (auto i=0; i<n; i+=2){
-//      double t1 = 1.0 - u[i];
-//      double t2 = 10 * (u[i + 1] - u[i] * u[i]);
-//      F[i + 1] = 20 * t2;
-//      F[i]     = -2.0 * (u[i] * F[i + 1] + t1);
-//    }
-
-//    F(0) = sin(u(0)) + u(1) - 1.0;
-//    F(1) = u(0) + cos(u(1)) - 2.0;
+  for(int i = 0; i < n; i += 2) {
+    double t1 = 1.0 - u(i);
+    double t2 = 10 * (u(i + 1) - u(i) * u(i));
+    F(i + 1) = 20 * t2;
+    F(i) = -2.0 * (u(i) * F(i + 1) + t1);
+  }
   return F;
 };
 
 Jacobian_t jacobian = [](VectorX const &u) {
   auto n = u.size();
 
-  ColMajorSparseMatrix jac(n,n);
-//    VectorX F(n);
+  ColMajorSparseMatrix hessian(n, n);
+  hessian.reserve(2 * n - 2);
 
-//    jac(0,0) = u(0);
-//    jac(1,0) = 0;
-//    jac(0,1) = 0;
-//    jac(1,1) = u(1);
+  for (int i = 0; i < n; i += 2) {
+    hessian.coeffRef(i, i) = 1200.0*u(i)*u(i) - 400.0*u(i + 1) + 2.0;
+    hessian.coeffRef(i + 1, i) = -400.0 * u(i);
+    hessian.coeffRef(i, i + 1) = -400.0 * u(i);
+    hessian.coeffRef(i + 1, i + 1) = 200.0; 
+  }
 
-//    jac.insert(0,0) = -0.5*sin(0.5*(u(0)+u(1)));
-//    jac.insert(1,0) = -0.5*sin(0.5*(u(0)+u(1)));
-//    jac.insert(0,1) = -0.5*sin(0.5*(u(0)+u(1)));
-//    jac.insert(1,1) = -0.5*sin(0.5*(u(0)+u(1))) + 2e-8*u(1)*cos(pow(u(1),2));
-//    jac.makeCompressed();
-
-  double val = -0.5*sin(0.5*(u(0)+u(1)));
-  jac.coeffRef(0,0) = val;
-  jac.coeffRef(1,0) = val;
-  jac.coeffRef(0,1) = val;
-  jac.coeffRef(1,1) = val+2e-8*u(1)*cos(pow(u(1),2));
-  jac.makeCompressed();
-
-//      jac.setIdentity();
-//    jac.setIdentity();
-
-  return jac;
+  hessian.finalize();
+  return hessian;
 };
 
-int main(int argc, char *argv[])
-{
-  int m = 0, n = 2;
+Jacobian_t jacobianNumerical = [](VectorX const &u) {
+  auto n = u.size();
+
+  ColMajorSparseMatrix hessian(n, n);
+
+  Scalar eps = 1e-8;
+  VectorX currentResidual = residual(u);
+  VectorX forwardResidual, diffVec;
+  VectorX uu = u;
+
+  for (auto i=0; i<n; ++i) {
+    uu(i) += eps;
+    forwardResidual = residual(uu);
+    diffVec = (forwardResidual - currentResidual) / eps;
+    for (auto j=0; j<n; ++j) {
+      hessian.coeffRef(i, j) = diffVec(j);
+    }
+    uu(i) -= eps;
+  }
+
+  return hessian;
+};
+
+int main(int argc, char *argv[]) {
+  int m = 3, n = 200;
 
   preAAParam<> param;
   param.m = m;
   param.usePreconditioning = true;
-//  param.updatePreconditionerStep = 1;
+  param.updatePreconditionerStep = 1;
   param.epsilon = 1e-10;
 
   AndersonAcceleration<> AASolver(param);
-//  AASolver.usePreconditioningON();
-//  AASolver.usePreconditioningOFF();
-//  AASolver.setUpdatePreconditionerStep(2);
-//  AASolver.printIterInfoOFF();
 
-  VectorX initialGuess = VectorX::Ones(n);
+  VectorX initialGuess = VectorX::Zero(n);
 
   measureTime([&]() {
     VectorX sol = AASolver.compute(initialGuess, residual, jacobian);

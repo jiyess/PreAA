@@ -1,6 +1,6 @@
-/** @file simple_example.cpp
+/** @file bivariate_polynomial_example.cpp
 
-    @brief Tutorial on how to use preAApp by solving a simple problem
+    @brief Usage of preAApp to solve a bivariate polynomial problem
 
     This Source Code Form is subject to the terms of the GNU Affero General
     Public License v3.0. If a copy of the MPL was not distributed with this
@@ -11,27 +11,31 @@
 
 //! [Include namespace]
 #include "preAA.h"
-
+#include "iostream"
 using namespace preAApp;
 //! [Include namespace]
 
-// The same example of Table 1 from Toth-Kelley 2015
-Residual_t residual = [](VectorX const &u) {
+// 2D nonlinear polynomial systems, Kelley and Suresh (1983)
+Residual_t residual = [](const VectorX &u) {
   VectorX F(2);
 
-  F(0) = cos(0.5 * (u(0)+u(1)));
-  F(1) = F(0) + 1e-8 * sin(u(1)*u(1));
+  double epsilon = 1e-8;
+  F(0) = u(0) - 1 + pow(u(1) - 3.0, 2.0);
+  F(1) = epsilon * (u(1) - 3.0) + 1.5 * (u(0) - 1) * (u(1) - 3.0) +
+      pow(u(1) - 3, 2.0) + pow(u(1) - 3, 3.0);
+
   return F;
 };
 
 Jacobian_t jacobian = [](VectorX const &u) {
   ColMajorSparseMatrix jac(2, 2);
 
-  double val = -0.5*sin(0.5*(u(0)+u(1)));
-  jac.coeffRef(0,0) = val;
-  jac.coeffRef(1,0) = val;
-  jac.coeffRef(0,1) = val;
-  jac.coeffRef(1,1) = val + 2e-8 * u(1) * cos(pow(u(1), 2));
+  double epsilon = 1e-8;
+  jac.coeffRef(0, 0) = 1.0;
+  jac.coeffRef(1, 0) = u(0) - 1 + 2.0 * (u(1) - 3.0);
+  jac.coeffRef(0, 1) = 1.5 * (u(1) - 3.0);
+  jac.coeffRef(1, 1) = epsilon + 1.5 * (u(0) - 1.0) + 2.0 * (u(1) - 3.0) +
+      3.0 * pow(u(1)-3.0, 2.0);
   jac.makeCompressed();
 
   return jac;
@@ -39,11 +43,11 @@ Jacobian_t jacobian = [](VectorX const &u) {
 
 int main(int argc, char *argv[]) {
   int m = 2;
-  if (argc == 2) {m = std::stoi(argv[1]);}
+  if (argc == 2) { m = std::stoi(argv[1]); }
 
   preAAParam<> param;
   param.m = m;
-  param.usePreconditioning = false;
+  param.usePreconditioning = true;
   param.updatePreconditionerStep = 1;
   param.epsilon = 1e-10;
 
@@ -55,3 +59,4 @@ int main(int argc, char *argv[]) {
     VectorX sol = AASolver.compute(initialGuess, residual, jacobian);
   });
 }
+
